@@ -171,6 +171,7 @@
     %type<formal> formal
 
     /* Precedence declarations go here. */
+    // page 16 of cool manual
     %left PLUS
     %left MINUS
     %left MULT
@@ -180,7 +181,7 @@
     %left AT
     %left DOT
     
-    %left ASSIGN
+    %right ASSIGN
     %left NOT
     %left ISVOID
 
@@ -202,7 +203,7 @@
     
     // class_list ::= class+
     class_list : 
-    class SEM {			/* single class */ 
+    class {			/* single class */ 
       $$ = single_Classes($1);  // single_[phylums] creates a list of length 1 of type [phylums]
       parse_results = $$;       // returns said list
     }
@@ -210,36 +211,32 @@
       $$ = append_Classes($1,single_Classes($2)); // see above, this time appending the current instance to the recursive result
       parse_results = $$;
     }
-    | error class {
-      $$ = single_Classes($2);
-      parse_results = $$;
-    }
     ;
 
     // class ::= class TYPE [inherits TYPE] { [feature;]* } ; <- this semicolon is handled by class_list
     class	:
-    CLASS TYPEID LBRACE feature_list RBRACE { 
+    CLASS TYPEID LBRACE feature_list RBRACE SEM {
+      @$ = @6;
       $$ = class_($2, idtable.add_string("Object"), $4, stringtable.add_string(curr_filename));
     }
-    | CLASS TYPEID INHERITS TYPEID LBRACE feature_list RBRACE { 
+    | CLASS TYPEID INHERITS TYPEID LBRACE feature_list RBRACE SEM {
+      @$ = @8;
       $$ = class_($2, $4, $6, stringtable.add_string(curr_filename)); 
     }
     ;
 
     // feature_list ::= feature+
-    feature_list :
+    feature_list:
     {
-      // no recognized pattern, empty set
       $$ = nil_Features();
     }
-    | feature_list feature {
-      // jesus fucking christ, flagging an error here saying "feature_list" has no declared type
-      // error was fucking useless. Real problem was the line below
-      // where single_Features($2) was pointing to object 2 which is a semicolon
-      $$ = append_Features($1, single_Features($2));
-    }
     | feature SEM { // semicolon rule here bc all features in a feature_list require a semicolon after
+      @$ = @2;
       $$ = single_Features($1);
+    }
+    | feature_list feature SEM {
+      @$ = @3;
+      $$ = append_Features($1, single_Features($2));
     }
     ;
 
@@ -313,7 +310,7 @@
     | WHILE expression LOOP expression POOL {
       $$ = loop($2, $4);
     }
-    | LBRACKET expression_set RBRACKET {
+    | LBRACE expression_set RBRACE {
       $$ = block($2);
     }
     | LET let_exp {
@@ -321,7 +318,7 @@
       $$ = $2;
     }
     | CASE expression OF case_list ESAC {
-      $$ = typecase($2, $4);
+      $$ = typcase($2, $4);
     }
     | NEW TYPEID {
       $$ = new_($2);
@@ -366,7 +363,7 @@
       $$ = int_const($1);
     }
     | STR_CONST {
-      $$ = string(const_$1);
+      $$ = string_const($1);
     }
     | BOOL_CONST {
       $$ = bool_const($1);
@@ -377,7 +374,7 @@
       $$ = single_Cases($1);
     }
     | case_list case_branch {
-      $$ = append_Cases($1, $2);
+      $$ = append_Cases($1, single_Cases($2));
     }
 
     case_branch:
@@ -401,7 +398,10 @@
 
     // comma sep
     expression_list:
-    expression {
+    {
+      $$ = nil_Expressions();
+    }
+    | expression {
       $$ = single_Expressions($1);
     }
     | expression_list COMMA expression {
@@ -413,7 +413,7 @@
     expression SEM {
       $$ = single_Expressions($1);
     }
-    | expression_set expression {
+    | expression_set expression SEM {
       $$ = append_Expressions($1, single_Expressions($2));
     }
 
