@@ -8,10 +8,8 @@
 //
 //////////////////////////////////////////////////////////
 
-
 #include "tree.h"
 #include "cool-tree.handcode.h"
-
 
 // define the class for phylum
 // define simple phylum - Program
@@ -53,8 +51,8 @@ public:
    tree_node *copy()		 { return copy_Feature(); }
    virtual Feature copy_Feature() = 0;
 
-   virtual bool IsMethod() const = 0;
    virtual const Symbol& GetID() const = 0;
+   virtual Symbol GetType() const = 0;
 #ifdef Feature_EXTRAS
    Feature_EXTRAS
 #endif
@@ -82,7 +80,10 @@ class Expression_class : public tree_node {
 public:
    tree_node *copy()		 { return copy_Expression(); }
    virtual Expression copy_Expression() = 0;
-
+   
+   // switch to pure virtual when ready
+   virtual Symbol GetType() const { return Symbol(NULL); };
+   // virtual const Symbol& GetType() const = 0;
 #ifdef Expression_EXTRAS
    Expression_EXTRAS
 #endif
@@ -196,8 +197,10 @@ public:
    Feature copy_Feature();
    void dump(ostream& stream, int n);
 
-   virtual bool IsMethod() const { return true; }
    virtual const Symbol& GetID() const { return name; }
+   virtual Symbol GetType() const { return return_type; }
+   Formals GetFormals() const { return formals; }
+   Expression GetExpression() const { return expr; }
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
 #endif
@@ -222,8 +225,9 @@ public:
    Feature copy_Feature();
    void dump(ostream& stream, int n);
 
-   virtual bool IsMethod() const { return false; }
    virtual const Symbol& GetID() const { return name; }
+   virtual Symbol GetType() const { return type_decl; }
+   const Expression& GetInit() const { return init; }
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
 #endif
@@ -500,6 +504,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -522,6 +527,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -544,6 +550,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -564,6 +571,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -586,6 +594,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -608,6 +617,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -630,6 +640,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -670,6 +681,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -690,6 +702,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -710,6 +723,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -730,6 +744,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const { return type_name; };
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif

@@ -1,11 +1,14 @@
 
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include "semant.h"
 #include "utilities.h"
 
+#include <sstream>
+#include <stack>
+
+#include <set>
 
 extern int semant_debug;
 extern char *curr_filename;
@@ -81,7 +84,10 @@ static void initialize_constants(void)
     val         = idtable.add_string("_val");
 }
 
-
+// This is absolutely insane
+static ClassTable* _tb;
+static Symbol ComTypes(Symbol e1, Symbol e2);
+static std::stack<Class_> cstack;
 
 ClassTable::ClassTable(Classes classes) : semant_errors(0) , error_stream(cerr) {
     DefineClasses(classes);
@@ -104,31 +110,53 @@ bool ClassTable::DefineClasses(Classes& cs)
         }
         else
         {
-            if(id == Main){ 
-                // std::cout << "Main Found.\n";
-                mainFound = true;
-            }
+            mainFound |= (id == Main);
             mTable.insert(std::make_pair(id, cur));
         }
-        LOGIT(std::cout << "Defined " << id << '\n');
+        LOGIT("Defined " << id << '\n');
     }
-    return mainFound;
+    if(!mainFound)
+    {
+        semant_error(cs->nth(cs->first())) << "No Main defined.\n";
+        return false;
+    }
+    return true;
 }
 
 // This isn't actually linking translation units but whatever. First name that came to mind
 bool ClassTable::LinkClasses(Classes& cs)
 {
+    // check for cycling inheritance
+    // no extending base types
     for(int i = cs->first(); cs->more(i); i = cs->next(i))
     {
+        std::set<Symbol> found;
         Class_ cur = cs->nth(i);
         Symbol id = cur->GetID();
+        found.insert(id);
+
+        Class_ seeker = cur;
         Symbol parent = cur->GetParent();
-        if(parent != Object && !mTable.count(parent))
+        if(!mTable.count(parent) && parent != Object)
         {
-            semant_error(cur) << "Parent class not defined. " << id << " : " << parent << '\n';
+            semant_error(cur) << "Parent class not defined " << id << " : " << parent << '\n';
             return false;
         }
-        LOGIT(std::cout << "Linked " << id << " to superclass " << parent << '\n');
+
+        // Check for inheritance cycles
+        while(parent != Object && mTable.count(parent))
+        {
+            if(found.count(parent))
+            {
+                semant_error(seeker) << "Cyclic inheritance " << seeker->GetID() << " : " << parent << '\n';
+                break;
+            }
+            found.insert(parent);
+            seeker = mTable.at(parent);
+            parent = seeker->GetParent();
+        }
+
+        LOGIT("Linked " << id << " to superclass " << parent << '\n');
     }
     return true;
 }
@@ -147,7 +175,7 @@ bool ClassTable::DefineFeatures(Classes& cs)
             Feature fe = fs->nth(b);
             table.insert(std::make_pair(fe->GetID(), fe));
         }
-        LOGIT(std::cout << "Defined class features " << cur->GetID() << '\n';);
+        LOGIT("Defined class features " << cur->GetID() << ". Total: " <<  table.size() << '\n');
     }
     return true;
 }
@@ -157,12 +185,44 @@ bool ClassTable::LinkFeatures(Classes& cs)
     for(int i = cs->first(); cs->more(i); i = cs->next(i))
     {
         Class_ cur = cs->nth(i);
+        cstack.push(cur);
+
         std::map<Symbol, Feature> table = mClassFeatures.at(cur->GetID());
+        LOGIT("Linking " << cur->GetID() << " features.\n");
         // check for definition errors or some shit
+        for(std::map<Symbol, Feature>::iterator it = table.begin(); it != table.end(); it++)
+        {
+            std::pair<const Symbol, Feature>& p = *it;
+            if(method_class* m = dynamic_cast<method_class*>(p.second))
+            {
+                LOGIT(m->GetID() << " is a method.\n");
+                // Check for return types
+            }
+            else
+            {
+                attr_class* a = dynamic_cast<attr_class*>(p.second);
+                LOGIT(a->GetID() << " is an attribute.\n");
+                const Expression& init = a->GetInit();
+                if(no_expr_class* noe = dynamic_cast<no_expr_class*>(init))
+                {
+                    LOGIT("No initializer, continuing.\n");
+                    continue;
+                }
+                LOGIT("Has initializer.\n");
+
+                // Make a way to check sub expressions and error when needed
+                // if(a->GetType() != init->GetType())
+                // {
+                //     semant_error(cur) << "Type mismatch. \"" << p.first << "\" requires " << a->GetType() << " but found " << init->GetType() <<'\n';
+                // }
+                ComTypes(a->GetType(), init->GetType());
+            }
+        }
+        LOGIT('\n');
+        cstack.pop();
     }
     return true;
 }
-
 
 
 void ClassTable::install_basic_classes() {
@@ -318,7 +378,8 @@ void program_class::semant()
     initialize_constants();
 
     /* ClassTable constructor may do some semantic analysis */
-    ClassTable *classtable = new ClassTable(classes);
+    // Holy shit I'm doing this just to get logging without changing function args
+    ClassTable *classtable = _tb = new ClassTable(classes);
 
     /* some semantic analysis code may go here */
 
@@ -328,4 +389,22 @@ void program_class::semant()
     }
 }
 
+Symbol ComTypes(Symbol e1, Symbol e2) {
+    if(e1 == e2)
+        return e1;
+    _tb->semant_error(cstack.top()) << "Type mismatch. " << e1 << " and " << e2 << '\n';
+    return No_type;
+}
 
+// bs I need to add bc static definitions in this file
+Symbol int_const_class::GetType() const { return Int; }
+Symbol bool_const_class::GetType() const { return Bool; }
+Symbol string_const_class::GetType() const { return Str; }
+
+Symbol leq_class::GetType() const { return ComTypes(e1->GetType(), e2->GetType()); }
+Symbol eq_class::GetType() const { return ComTypes(e1->GetType(), e2->GetType()); }
+Symbol lt_class::GetType() const { return ComTypes(e1->GetType(), e2->GetType()); }
+Symbol divide_class::GetType() const { return ComTypes(e1->GetType(), e2->GetType()); }
+Symbol mul_class::GetType() const { return ComTypes(e1->GetType(), e2->GetType()); }
+Symbol sub_class::GetType() const { return ComTypes(e1->GetType(), e2->GetType()); }
+Symbol neg_class::GetType() const { return e1->GetType() == Int ? Int : No_type; }

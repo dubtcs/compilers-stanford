@@ -18,13 +18,18 @@
 // cout wrapper incase this fucks with grading later
 #define CLASSTABLE_LOGIT
 #ifdef CLASSTABLE_LOGIT
-  #define LOGIT(s) s
+  #define LOGIT(s) std::cout << s
 #else
   #define LOGIT(s)
 #endif
 
+#define BIT(n) 1 << n
+
 class ClassTable;
 typedef ClassTable *ClassTableP;
+
+// Just use this as a lookup table
+typedef std::map<Symbol, Feature> Scope;
 
 // This is a structure that may be used to contain the semantic
 // information such as the inheritance graph.  You may use it or not as
