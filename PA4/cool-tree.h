@@ -36,7 +36,7 @@ public:
 
    virtual const Symbol& GetID() const = 0;
    virtual const Symbol& GetParent() const = 0;
-   virtual const Features& GetFeatures() const = 0;
+   virtual Features GetFeatures() const = 0;
 #ifdef Class__EXTRAS
    Class__EXTRAS
 #endif
@@ -51,8 +51,9 @@ public:
    tree_node *copy()		 { return copy_Feature(); }
    virtual Feature copy_Feature() = 0;
 
-   virtual const Symbol& GetID() const = 0;
+   virtual Symbol GetID() const = 0;
    virtual Symbol GetType() const = 0;
+   virtual bool IsMethod() const = 0;
 #ifdef Feature_EXTRAS
    Feature_EXTRAS
 #endif
@@ -82,7 +83,8 @@ public:
    virtual Expression copy_Expression() = 0;
    
    // switch to pure virtual when ready
-   virtual Symbol GetType() const { return Symbol(NULL); };
+   virtual Symbol GetType() const;
+   virtual bool Validate(Symbol rtype) const;
    // virtual const Symbol& GetType() const = 0;
 #ifdef Expression_EXTRAS
    Expression_EXTRAS
@@ -170,7 +172,7 @@ public:
 
    virtual const Symbol& GetID() const { return name; }
    virtual const Symbol& GetParent() const { return parent; }
-   virtual const Features& GetFeatures() const { return features; }
+   virtual Features GetFeatures() const { return features; }
 #ifdef Class__SHARED_EXTRAS
    Class__SHARED_EXTRAS
 #endif
@@ -197,8 +199,9 @@ public:
    Feature copy_Feature();
    void dump(ostream& stream, int n);
 
-   virtual const Symbol& GetID() const { return name; }
+   virtual Symbol GetID() const { return name; }
    virtual Symbol GetType() const { return return_type; }
+   virtual bool IsMethod() const;
    Formals GetFormals() const { return formals; }
    Expression GetExpression() const { return expr; }
 #ifdef Feature_SHARED_EXTRAS
@@ -225,8 +228,9 @@ public:
    Feature copy_Feature();
    void dump(ostream& stream, int n);
 
-   virtual const Symbol& GetID() const { return name; }
+   virtual Symbol GetID() const { return name; }
    virtual Symbol GetType() const { return type_decl; }
+   virtual bool IsMethod() const;
    const Expression& GetInit() const { return init; }
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
@@ -460,6 +464,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -482,6 +487,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -661,6 +667,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -744,7 +751,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const { return type_name; };
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -765,6 +772,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif

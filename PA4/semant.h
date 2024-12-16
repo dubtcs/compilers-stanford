@@ -10,7 +10,9 @@
 
 #include <map>
 #include <list>
+#include <set>
 #include <vector>
+#include <stack>
 
 #define TRUE 1
 #define FALSE 0
@@ -29,12 +31,41 @@ class ClassTable;
 typedef ClassTable *ClassTableP;
 
 // Just use this as a lookup table
-typedef std::map<Symbol, Feature> Scope;
+// typedef std::map<Symbol, Feature> Scope;
 
 // This is a structure that may be used to contain the semantic
 // information such as the inheritance graph.  You may use it or not as
 // you like: it is only here to provide a container for the supplied
 // methods.
+
+class Scope {
+public:
+  std::string name;
+  std::set<Symbol> vars;
+  Scope(){}
+  Scope(std::string nam): name(nam) {}
+  void Add(Symbol name);
+  bool Has(Symbol name) const;
+};
+
+class ScopeContainer {
+protected:
+  std::map<Symbol, std::stack<Symbol> > vars;
+  std::stack<Scope> scopes;
+public:
+  // Enter a new scope
+  void Enter(std::string name = "");
+  // Exit current scope
+  void Exit();
+  // Add the symbol to the table with the associated type
+  void Add(Symbol name, Symbol type);
+  // Get the top most scope in the stack
+  const Scope& GetCurrentScope() const;
+  // Check if the current scope has already defined this name
+  bool IsDefinedInScope(Symbol name) const;
+  // Get the current type binding for variable name
+  Symbol GetType(Symbol name);
+};
 
 class ClassTable {
 private:
@@ -52,11 +83,14 @@ public:
 protected:
   std::map<Symbol, Class_> mTable;
   std::map<Symbol, std::map<Symbol, Feature> > mClassFeatures;
+  ScopeContainer scopes;
 protected:
   bool DefineClasses(Classes& classes);
   bool LinkClasses(Classes& classes);
   bool DefineFeatures(Classes& classes);
   bool LinkFeatures(Classes& classes);
+  bool ClassFeatures(Class_ c);
+  void CheckExpression(Expression e);
 };
 
 
