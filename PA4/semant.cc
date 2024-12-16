@@ -87,8 +87,8 @@ static void initialize_constants(void)
 
 // This is absolutely insane
 static ClassTable* _tb;
-static Symbol ComTypes(Symbol e1, Symbol e2);
 static std::stack<Class_> cstack;
+static ostream& serr();
 
 bool Scope::Has(Symbol name) const { return vars.count(name); }
 void Scope::Add(Symbol name)
@@ -129,7 +129,7 @@ void ScopeContainer::Add(Symbol name, Symbol type)
         return;
     }
     Scope& s = scopes.top();
-    std::stack<Symbol>& st = vars.at(name);
+    std::stack<Symbol>& st = vars[name]; // will construct if it doesn't exist
     // pop top item to replace it in current scope
     // as all redefinitions in a scope hide the previous
     // this should probably throw an error instead
@@ -282,10 +282,10 @@ bool ClassTable::LinkFeatures(Classes& cs)
                 LOGIT("Has initializer.\n");
 
                 //Make a way to check sub expressions and error when needed
-                if(a->GetType() != init->GetType())
-                {
-                    semant_error(cur) << "Type mismatch. \"" << p.first << "\" requires " << a->GetType() << " but found " << init->GetType() <<'\n';
-                }
+                // if(a->GetType() != init->GetType())
+                // {
+                //     semant_error(cur) << "Type mismatch. \"" << p.first << "\" requires " << a->GetType() << " but found " << init->GetType() <<'\n';
+                // }
                 // ComTypes(a->GetType(), init->GetType());
             }
         }
@@ -313,7 +313,11 @@ bool ClassTable::ClassFeatures(Class_ c)
             LOGIT(pair.first->get_string() << " is an attribute.\n");
             attr_class* at = static_cast<attr_class*>(pair.second);
             scopes.Add(pair.first, at->GetType());
-            at->GetInit()->Validate(at->GetType());
+            Symbol rv = at->GetInit()->Validate();
+            if(rv == No_type)
+                LOGIT("NO INIT\n");
+            if(rv != No_type && rv != at->GetType())
+                semant_error(c) << "Expected " << at->GetType() << " but found " << rv << '\n';
         }
     }
     scopes.Exit();
@@ -484,91 +488,99 @@ void program_class::semant()
     }
 }
 
-Symbol ComTypes(Symbol e1, Symbol e2) {
-    if(e1 == e2)
-        return e1;
-    _tb->semant_error(cstack.top()) << "Type mismatch. " << e1 << " and " << e2 << '\n';
-    return No_type;
-}
-
-static bool CheckArCoOp(Expression lhs, Expression rhs)
+static bool ValidateComparison(Expression lhs, Expression rhs)
 {
     bool broken = false;
-    if(lhs->GetType() != Int) {
-        _tb->semant_error(cstack.top()) << "Left side of expression must be Int but found " << lhs->GetType() << '\n';
+    Symbol l = lhs->Validate();
+    Symbol r = rhs->Validate();
+    if(l != Bool)
+    {
+        serr() << "Expected LHS Int but found " << l;
         broken = true;
     }
-    if(rhs->GetType() != Int) {
-        _tb->semant_error(cstack.top()) << "Right side of expression must be Int but found " << rhs->GetType() << '\n';
+    if(r != Bool)
+    {
+        serr() << "Expected RHS Int but found " << r;
         broken = true;
     }
     return !broken;
 }
 
-static Symbol CheckComparisonOperation(Expression lhs, Expression rhs) {
-    // return CheckArCoOp(lhs, rhs) ? Bool : No_type;
-    CheckArCoOp(lhs, rhs);
-    return Int;
+static void ValidateArith(Expression lhs, Expression rhs)
+{
+    Symbol t = lhs->Validate();
+    if(t != Int)
+        serr() << "Expected LHS Int but found " << t << '\n';
+    t = rhs->Validate();
+    if(t != Int)
+        serr() << "Expected RHS Int but found " << t << '\n';
+    return;
 }
 
-static Symbol CheckArithOperation(Expression lhs, Expression rhs) {
-    // return CheckArCoOp(lhs, rhs) ? Int : No_type;
-    CheckArCoOp(lhs, rhs);
-    return Int;
-}
+ostream& serr() { return _tb->semant_error(cstack.top()); }
 
 bool attr_class::IsMethod() const { return false; }
 bool method_class::IsMethod() const { return true; }
 
-// bs I need to add bc static definitions in this file
-Symbol int_const_class::GetType() const { return Int; }
-Symbol bool_const_class::GetType() const { return Bool; }
-Symbol string_const_class::GetType() const { return Str; }
+Symbol int_const_class::Validate() const { return Int; }
+Symbol bool_const_class::Validate() const { return Bool; }
+Symbol string_const_class::Validate() const { return Str; }
+Symbol isvoid_class::Validate() const { return Bool; }
 
-Symbol leq_class::GetType() const { return CheckComparisonOperation(e1, e2); }
-Symbol lt_class::GetType() const { return CheckComparisonOperation(e1, e2); }
-
-// bool leq_class::Validate(Symbol rv) const { return CheckComparisonOperation(e1, e2); }
-// bool leq_class::Validate(Symbol rv) const { return CheckComparisonOperation(e1, e2); }
-
-Symbol divide_class::GetType() const { return CheckArithOperation(e1, e2); }
-Symbol mul_class::GetType() const { return CheckArithOperation(e1, e2); }
-Symbol sub_class::GetType() const { return CheckArithOperation(e1, e2); }
-Symbol plus_class::GetType() const { return CheckArithOperation(e1, e2); }
-
-Symbol neg_class::GetType() const { return Int; }//return e1->GetType() == Int ? Int : No_type; }
-
-Symbol isvoid_class::GetType() const { return Bool; }
-
-Symbol eq_class::GetType() const {
-    Symbol t1 = e1->GetType();
-    if(t1 == Int || t1 == Bool || t1 == Str)
-    {
-        if(t1 != e2->GetType())
-        {
-            _tb->semant_error(cstack.top()) << "Type mismatch for eq. " << t1 << " and " << e2->GetType() << '\n';
-            // return No_type;
-        }
-    }
-    // if neither is a built in type, the pointers will be compared, so itll work regardless
+Symbol leq_class::Validate() const {
+    ValidateComparison(e1, e2);
     return Bool;
 }
-
-Symbol comp_class::GetType() const {
-    if(e1->GetType() != Int) {
-        _tb->semant_error(cstack.top()) << "Compliment requires type Int but found " << e1->GetType() << '\n';
-        // return No_type;
+Symbol lt_class::Validate() const {
+    ValidateComparison(e1, e2);
+    return Bool;
+}
+Symbol eq_class::Validate() const {
+    Symbol ty = e1->Validate();
+    Symbol t2 = e2->Validate();
+    if(ty == Int || ty == Bool || ty == Str) {
+        if(ty != t2) {
+            serr() << "Type mismatch: " << ty->get_string() << " and " << t2->get_string() << '\n';
+        }
+    }
+    return Bool;
+}
+Symbol plus_class::Validate() const {
+    ValidateArith(e1,e2);
+    return Int;
+}
+Symbol sub_class::Validate() const {
+    ValidateArith(e1,e2);
+    return Int;
+}
+Symbol mul_class::Validate() const {
+    ValidateArith(e1,e2);
+    return Int;
+}
+Symbol divide_class::Validate() const {
+    ValidateArith(e1, e2);
+    return Int;
+}
+Symbol neg_class::Validate() const {
+    Symbol t = e1->Validate();
+    if(t != Int)
+        serr() << "Negate requires Int but found " << t << '\n';
+    return Int;
+}
+Symbol comp_class::Validate() const {
+    Symbol t = e1->Validate();
+    if(t != Int) {
+        serr() << "Compliment requires type Int but found " << t << '\n';
     }
     return Int;
 }
-
-Symbol new__class::GetType() const {
+Symbol new__class::Validate() const {
     if(type_name == SELF_TYPE)
-        return cstack.top()->GetID();
+        return cstack.top()->GetID(); // ID is the name of the class, so the type name.
     return type_name;
 }
 
-Symbol let_class::GetType() const {
+Symbol let_class::Validate() const {
     // oh boy
     // variables declared here are then visible in the scope of the body
 
@@ -576,5 +588,4 @@ Symbol let_class::GetType() const {
 }
 
 // Used for marking empty expressions
-Symbol Expression_class::GetType() const { return No_type; }
-bool Expression_class::Validate(Symbol rtype) const { return true; }
+Symbol Expression_class::Validate() const { return No_type; }

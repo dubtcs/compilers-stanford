@@ -83,8 +83,8 @@ public:
    virtual Expression copy_Expression() = 0;
    
    // switch to pure virtual when ready
-   virtual Symbol GetType() const;
-   virtual bool Validate(Symbol rtype) const;
+   virtual Symbol Validate() const;
+
    // virtual const Symbol& GetType() const = 0;
 #ifdef Expression_EXTRAS
    Expression_EXTRAS
@@ -464,7 +464,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -487,7 +487,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -510,7 +510,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -533,7 +533,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -556,7 +556,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -577,7 +577,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -600,7 +600,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -623,7 +623,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -646,7 +646,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -667,7 +667,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -688,7 +688,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -709,7 +709,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -730,7 +730,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -751,7 +751,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -772,7 +772,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
-   virtual Symbol GetType() const;
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
