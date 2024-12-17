@@ -63,6 +63,8 @@ public:
   const Scope& GetCurrentScope() const;
   // Check if the current scope has already defined this name
   bool IsDefinedInScope(Symbol name) const;
+  // Check if entire scope has this symbol
+  bool Has(Symbol name) const;
   // Get the current type binding for variable name
   Symbol GetType(Symbol name);
 };
@@ -79,18 +81,11 @@ public:
   ostream& semant_error();
   ostream& semant_error(Class_ c);
   ostream& semant_error(Symbol filename, tree_node *t);
-  
 protected:
-  std::map<Symbol, Class_> mTable;
-  std::map<Symbol, std::map<Symbol, Feature> > mClassFeatures;
-  ScopeContainer scopes;
-protected:
+  bool DeclareClasses(Classes& classes);
   bool DefineClasses(Classes& classes);
-  bool LinkClasses(Classes& classes);
-  bool DefineFeatures(Classes& classes);
-  bool LinkFeatures(Classes& classes);
-  bool ClassFeatures(Class_ c);
-  void CheckExpression(Expression e);
+  bool DeclareFeatures(Classes& classes);
+  bool DefineFeatures(Class_ c);
 };
 
 

@@ -7,6 +7,7 @@
 
 #include <sstream>
 #include <stack>
+#include <queue>
 
 #include <set>
 
@@ -84,11 +85,30 @@ static void initialize_constants(void)
     val         = idtable.add_string("_val");
 }
 
+struct MethodContainer {
+    Symbol name;
+    Formals args;
+    Symbol rv;
+};
+
+// Adjacency list of inheritance
+// Keys are a class, value is the class it inherits from
+// Any class not present in this map are classes that do not inherit anything
+static std::map<Symbol, Symbol> inheritanceGraph;
 
 // This is absolutely insane
 static ClassTable* _tb;
 static std::stack<Class_> cstack;
 static ostream& serr();
+
+static void ETypeMismatch(Symbol expected, Symbol actual);
+
+// christ this is ugly
+static ScopeContainer scopes;
+static std::map<Symbol, Class_> mTable;
+static std::map<Symbol, std::map<Symbol, Feature> > mClassFeatures;
+
+static std::set<Symbol> usertypes;
 
 bool Scope::Has(Symbol name) const { return vars.count(name); }
 void Scope::Add(Symbol name)
@@ -157,16 +177,26 @@ bool ScopeContainer::IsDefinedInScope(Symbol name) const
         return GetCurrentScope().Has(name);        
     return false;
 }
+bool ScopeContainer::Has(Symbol name) const {
+    if(!scopes.empty()) {
+        return vars.count(name);
+    }
+    return false;
+}
 
 ClassTable::ClassTable(Classes classes) : semant_errors(0) , error_stream(cerr) {
+    DeclareClasses(classes);
     DefineClasses(classes);
-    LinkClasses(classes);
-    DefineFeatures(classes);
+    DeclareFeatures(classes);
     // LinkFeatures(classes);
 }
 
-bool ClassTable::DefineClasses(Classes& cs)
+bool ClassTable::DeclareClasses(Classes& cs)
 {
+    usertypes.insert(Str);
+    usertypes.insert(Int);
+    usertypes.insert(Bool);
+    
     LOGIT(type_name->get_string() << '\n');
     bool mainFound = false;
     for(int i = cs->first(); cs->more(i); i = cs->next(i))
@@ -183,6 +213,7 @@ bool ClassTable::DefineClasses(Classes& cs)
             mainFound |= (id == Main);
             mTable.insert(std::make_pair(id, cur));
         }
+        usertypes.insert(id);
         LOGIT("Defined " << id << '\n');
     }
     if(!mainFound)
@@ -194,7 +225,7 @@ bool ClassTable::DefineClasses(Classes& cs)
 }
 
 // This isn't actually linking translation units but whatever. First name that came to mind
-bool ClassTable::LinkClasses(Classes& cs)
+bool ClassTable::DefineClasses(Classes& cs)
 {
     // check for cycling inheritance
     // no extending base types
@@ -214,16 +245,40 @@ bool ClassTable::LinkClasses(Classes& cs)
         }
 
         // Check for inheritance cycles
+        bool broken = false;
+        
+        // The stack is just the current class' inheritance chain
+        std::stack<Symbol> typeStack;
+        // Push the current ID to the bottom
+        typeStack.push(seeker->GetID());
         while(parent != Object && mTable.count(parent))
         {
             if(found.count(parent))
             {
                 semant_error(seeker) << "Cyclic inheritance " << seeker->GetID() << " : " << parent << '\n';
+                broken = true;
                 break;
             }
             found.insert(parent);
+            typeStack.push(parent);
             seeker = mTable.at(parent);
             parent = seeker->GetParent();
+        }
+        if(!broken && !typeStack.empty()) {
+            // The top of the stack will always be the lowest possible type
+            Symbol inheritsFrom = typeStack.top();
+            typeStack.pop();
+            // While there are types in the inheritance chain
+            while(!typeStack.empty()) {
+                Symbol cur = typeStack.top();
+                // Check if the definition exists
+                if(!inheritanceGraph.count(cur)) {
+                    // Create an entry if it doesn't exist yet
+                    inheritanceGraph.insert(std::make_pair(cur, inheritsFrom));
+                }
+                inheritsFrom = typeStack.top();
+                typeStack.pop();
+            }
         }
 
         LOGIT("Linked " << id << " to superclass " << parent << '\n');
@@ -231,7 +286,7 @@ bool ClassTable::LinkClasses(Classes& cs)
     return true;
 }
 
-bool ClassTable::DefineFeatures(Classes& cs)
+bool ClassTable::DeclareFeatures(Classes& cs)
 {
     // methods and attributes
     // both derive Feature_class in cool-tree.h
@@ -245,57 +300,13 @@ bool ClassTable::DefineFeatures(Classes& cs)
             Feature fe = fs->nth(b);
             table.insert(std::make_pair(fe->GetID(), fe));
         }
-        LOGIT("Defined class features " << cur->GetID() << ". Total: " <<  table.size() << '\n');
-        ClassFeatures(cur);
+        LOGIT("Declared class features " << cur->GetID() << ". Total: " <<  table.size() << '\n');
+        DefineFeatures(cur);
     }
     return true;
 }
 
-bool ClassTable::LinkFeatures(Classes& cs)
-{
-    for(int i = cs->first(); cs->more(i); i = cs->next(i))
-    {
-        Class_ cur = cs->nth(i);
-        cstack.push(cur);
-
-        std::map<Symbol, Feature> table = mClassFeatures.at(cur->GetID());
-        LOGIT("Linking " << cur->GetID() << " features.\n");
-        // check for definition errors or some shit
-        for(std::map<Symbol, Feature>::iterator it = table.begin(); it != table.end(); it++)
-        {
-            std::pair<const Symbol, Feature>& p = *it;
-            if(method_class* m = dynamic_cast<method_class*>(p.second))
-            {
-                LOGIT(m->GetID() << " is a method.\n");
-                // Check for return types
-            }
-            else
-            {
-                attr_class* a = dynamic_cast<attr_class*>(p.second);
-                LOGIT(a->GetID() << " is an attribute.\n");
-                const Expression& init = a->GetInit();
-                if(no_expr_class* noe = dynamic_cast<no_expr_class*>(init))
-                {
-                    LOGIT("No initializer, continuing.\n");
-                    continue;
-                }
-                LOGIT("Has initializer.\n");
-
-                //Make a way to check sub expressions and error when needed
-                // if(a->GetType() != init->GetType())
-                // {
-                //     semant_error(cur) << "Type mismatch. \"" << p.first << "\" requires " << a->GetType() << " but found " << init->GetType() <<'\n';
-                // }
-                // ComTypes(a->GetType(), init->GetType());
-            }
-        }
-        LOGIT('\n');
-        cstack.pop();
-    }
-    return true;
-}
-
-bool ClassTable::ClassFeatures(Class_ c)
+bool ClassTable::DefineFeatures(Class_ c)
 {
     LOGIT("Checking features for class: " << c->GetID() << '\n');
     scopes.Enter(c->GetID()->get_string());
@@ -312,12 +323,12 @@ bool ClassTable::ClassFeatures(Class_ c)
         {
             LOGIT(pair.first->get_string() << " is an attribute.\n");
             attr_class* at = static_cast<attr_class*>(pair.second);
-            scopes.Add(pair.first, at->GetType());
+            if(usertypes.count(at->GetType()) == 0)
+                semant_error(c) << "No class defined: " << at->GetType() << '\n';
             Symbol rv = at->GetInit()->Validate();
-            if(rv == No_type)
-                LOGIT("NO INIT\n");
             if(rv != No_type && rv != at->GetType())
                 semant_error(c) << "Expected " << at->GetType() << " but found " << rv << '\n';
+            scopes.Add(pair.first, at->GetType());
         }
     }
     scopes.Exit();
@@ -587,5 +598,160 @@ Symbol let_class::Validate() const {
     return No_type;
 }
 
+Symbol object_class::Validate() const {
+    if(name == self)
+        return SELF_TYPE;
+    if(usertypes.count(name))
+        return name;
+    serr() << "No class defined: " << name << '\n';
+    return Object;
+}
+
+Symbol assign_class::Validate() const {
+    Symbol et = expr->Validate();
+    if(scopes.Has(name)) {
+        if(scopes.GetType(name) != et)
+            serr() << "Assignment expected " << scopes.GetType(name) << " but found " << et << '\n';
+    }
+    return et;
+}
+
+static void ValidateMethod(Symbol callClass, Symbol methodName, Expressions arguments) {
+    // callClass should always exist in this map bc how tf else would the expression compile to that outcome
+    if(mClassFeatures.at(callClass).count(methodName)) {
+        Feature f = mClassFeatures.at(callClass).at(methodName);
+        if(f->IsMethod()) { // can also dynamic_cast
+            Symbol ftype = f->GetType();
+            if(callClass != ftype) {
+                serr() << "Type mismatch. Expected " << callClass << " but found " << ftype << '\n';
+            }
+            method_class* me = static_cast<method_class*>(f);
+            // Add all expressions' types into a queue
+            std::queue<Symbol> args;
+            for(int i = arguments->first(); arguments->more(i); i = arguments->next(i)) {
+                Expression cur = actual->nth(i);
+                Symbol ty = cur->Validate();
+                args.push(ty);
+            }
+            Formals ff = me->GetFormals();
+            // Check the arg queue with the formals list of the method
+            for(int i = ff->first(); ff->more(i); i = ff->next(i)) {
+                if(args.empty()) {
+                    serr() << "Not enough arguments supplied for method declaration.\n";
+                    break;
+                }
+                Symbol ty = ff->nth(i)->Validate();
+                if(ty != args.front()) {
+                    serr() << "Type mismatch for agument " << i << ". Expected " << ty << " but found " << args.front() << '\n';
+                }
+                args.pop();
+            }
+            if(args.size()) {
+                serr() << "Too many arguments supplied for method declaration.\n";
+            }
+        } else {
+            serr() << "Attribute " << f->GetID() << " is not a method.\n";
+        }
+    }
+    else {
+        // WAIT
+        // Check inheritance list for overrides n shit
+        // No. That is not this methods problem
+        serr() << "No method " << methodName << " found in class " << callClass << '\n';
+    }
+}
+
+Symbol dispatch_class::Validate() const {
+    Symbol t1 = expr->Validate();
+    Symbol t3 = actual->Validate();
+    // what if t1 validation fails and returns type Object?
+    if(t1 == No_type)
+        t1 = SELF_TYPE;
+    if(mClassFeatures.at(t1).count(name)) {
+        Feature f = mClassFeatures.at(t1).at(name);
+        // Make sure the attribute is actually a method
+        if(!f->IsMethod()) {
+            // Type check the method
+            Symbol ftype = f->GetType();
+            if(ftype != t1) {
+                serr() << "Expected " << t1 << " but found " << ftype << '\n';
+            }
+            method_class* me = static_cast<method_class*>(f);
+
+            // Make sure the arguments all match types and quantity
+            // Use a queue to build up the types in the parameters supplied
+            std::queue<Symbol> args;
+            for(int i = actual->first(); actual->more(i); i = actual->next(i)) {
+                Expression cur = actual->nth(i);
+                Symbol etype = cur->Validate();
+                args.push(etype);
+            }
+            // Get and check the method being called
+            Formals ff = me->GetFormals();
+            
+            // peek the && args.size() loop conditional
+            // this might cause problems
+            // like if no args are supplied and no error message is sent bc the loop is never entered
+            for(int i = ff->first(); ff->more(i); i = ff->next(i)) {
+                Symbol ty = ff->nth(i)->Validate();
+                if(args.empty()) {
+                    serr() << "Not enough arguments supplied for method declaration.\n";
+                    break;
+                }
+                if(ty != args.front()) {
+                    serr() << "Type mismatch. Expected " << ty << " but found " << args.front() << '\n';
+                }
+                args.pop();
+                // Check for too little args
+            }
+            // Check for too many args
+            if(args.size()) {
+                serr() << "Too many arguments supplied for method declaration.\n";
+            }
+        } else {
+            serr() << "Attribute " << f->GetID() << " is not a method.\n";
+        }
+    } else {
+        serr() << "No method found: " << name << " in " << t1 << '\n';
+    }
+    return t3;
+}
+
+Symbol static_dispatch_class::Validate() const {
+    Symbol t1 = expr->Validate();
+    Symbol t3 = actual->Validate();
+    if(!usertypes.count(type_name)) {
+        serr() << "No type found: " << type_name << '\n';
+    }
+    // t1 will always have a type at this point
+
+    // This shares so much with standard dispatch, find a common point and make a function for it
+    if(mClassFeatures.at(t1).count(name)) {
+        Symbol ftype = mClassFeatures.at(t1).at(name)->GetType();
+        if(ftype != t1) {
+            serr() << "Expected " << t1 << " but found " << ftype << '\n';
+        }
+    } else {
+        serr() << "No method: " << name << " in class type " << type_name << '\n';
+    }
+    return t3;
+}
+
+Symbol cond_class::Validate() const {
+    Symbol pt = pred->Validate();
+    if(pt != Bool) {
+        ETypeMismatch(Bool, pt);
+    }
+    // the type is the lowest common ancestor
+    // do this shit
+    
+    return Object;
+}
+
 // Used for marking empty expressions
 Symbol Expression_class::Validate() const { return No_type; }
+
+void ETypeMismatch(Symbol expected, Symbol actual) {
+    serr() << "Type mismatch. Expected " << expected << " but found " << actual << '\n';
+}
+
