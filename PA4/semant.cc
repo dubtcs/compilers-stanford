@@ -117,6 +117,9 @@ void Scope::Add(Symbol name)
         vars.insert(name);
 }
 
+void ScopeContainer::EnterClass(Symbol n) { currentClass = n; }
+Symbol ScopeContainer::CurrentClass() { return currentClass; }
+void ScopeContainer::ExitClass() { currentClass = NULL; }
 void ScopeContainer::Enter(std::string name)
 {
     LOGIT("Entering scope: " << name << '\n');
@@ -235,6 +238,7 @@ bool ClassTable::DefineClasses(Classes& cs)
         Class_ cur = cs->nth(i);
         Symbol id = cur->GetID();
         found.insert(id);
+        scopes.EnterClass(id);
 
         Class_ seeker = cur;
         Symbol parent = cur->GetParent();
@@ -282,6 +286,8 @@ bool ClassTable::DefineClasses(Classes& cs)
         }
 
         LOGIT("Linked " << id << " to superclass " << parent << '\n');
+        scopes.ExitClass();
+        LOGIT("EXITED\n");
     }
     return true;
 }
@@ -290,19 +296,34 @@ bool ClassTable::DeclareFeatures(Classes& cs)
 {
     // methods and attributes
     // both derive Feature_class in cool-tree.h
+    LOGIT("Declaring class features\n");
     for(int i = cs->first(); cs->more(i); i = cs->next(i))
     {
+        LOGIT("Class" << cs->nth(i)->GetID());
         Class_ cur = cs->nth(i);
+        scopes.EnterClass(cur->GetID());
+        scopes.Enter(cur->GetID()->get_string());
         Features fs = cur->GetFeatures();
         std::map<Symbol, Feature>& table = mClassFeatures[cur->GetID()];
         for(int b = fs->first(); fs->more(b); b = fs->next(b))
         {
             Feature fe = fs->nth(b);
+            if(fe->GetID()->get_string() == "self") {
+                serr() << "Cannot declare attribute as self.\n";
+                continue;
+            }
             table.insert(std::make_pair(fe->GetID(), fe));
+            // Add class variables to the current scope
+            if(!fe->IsMethod()) {
+                scopes.Add(fe->GetID(), fe->GetType());
+            }
         }
         LOGIT("Declared class features " << cur->GetID() << ". Total: " <<  table.size() << '\n');
         DefineFeatures(cur);
+        scopes.Exit();
+        scopes.ExitClass();
     }
+    LOGIT("Done with features\n");
     return true;
 }
 
@@ -539,14 +560,17 @@ Symbol string_const_class::Validate() const { return Str; }
 Symbol isvoid_class::Validate() const { return Bool; }
 
 Symbol leq_class::Validate() const {
+    LOGIT("Less than equal expression\n");
     ValidateComparison(e1, e2);
     return Bool;
 }
 Symbol lt_class::Validate() const {
+    LOGIT("Less than expression\n");
     ValidateComparison(e1, e2);
     return Bool;
 }
 Symbol eq_class::Validate() const {
+    LOGIT("Equal expression\n");
     Symbol ty = e1->Validate();
     Symbol t2 = e2->Validate();
     if(ty == Int || ty == Bool || ty == Str) {
@@ -557,28 +581,34 @@ Symbol eq_class::Validate() const {
     return Bool;
 }
 Symbol plus_class::Validate() const {
+    LOGIT("Addition expression\n");
     ValidateArith(e1,e2);
     return Int;
 }
 Symbol sub_class::Validate() const {
+    LOGIT("Subtraction expression\n");
     ValidateArith(e1,e2);
     return Int;
 }
 Symbol mul_class::Validate() const {
+    LOGIT("Multiply expression\n");
     ValidateArith(e1,e2);
     return Int;
 }
 Symbol divide_class::Validate() const {
+    LOGIT("Divide expression\n");
     ValidateArith(e1, e2);
     return Int;
 }
 Symbol neg_class::Validate() const {
+    LOGIT("Negate expression\n");
     Symbol t = e1->Validate();
     if(t != Int)
         serr() << "Negate requires Int but found " << t << '\n';
     return Int;
 }
 Symbol comp_class::Validate() const {
+    LOGIT("Compliment expression\n");
     Symbol t = e1->Validate();
     if(t != Int) {
         serr() << "Compliment requires type Int but found " << t << '\n';
@@ -586,19 +616,14 @@ Symbol comp_class::Validate() const {
     return Int;
 }
 Symbol new__class::Validate() const {
+    LOGIT("New expression\n");
     if(type_name == SELF_TYPE)
         return cstack.top()->GetID(); // ID is the name of the class, so the type name.
     return type_name;
 }
 
-Symbol let_class::Validate() const {
-    // oh boy
-    // variables declared here are then visible in the scope of the body
-
-    return No_type;
-}
-
 Symbol object_class::Validate() const {
+    LOGIT("Object expression\n");
     if(name == self)
         return SELF_TYPE;
     if(usertypes.count(name))
@@ -608,6 +633,7 @@ Symbol object_class::Validate() const {
 }
 
 Symbol assign_class::Validate() const {
+    LOGIT("Assignment expression\n");
     Symbol et = expr->Validate();
     if(scopes.Has(name)) {
         if(scopes.GetType(name) != et)
@@ -616,7 +642,7 @@ Symbol assign_class::Validate() const {
     return et;
 }
 
-static void ValidateMethod(Symbol callClass, Symbol methodName, Expressions arguments) {
+static Symbol ValidateMethod(Symbol callClass, Symbol methodName, Expressions arguments) {
     // callClass should always exist in this map bc how tf else would the expression compile to that outcome
     if(mClassFeatures.at(callClass).count(methodName)) {
         Feature f = mClassFeatures.at(callClass).at(methodName);
@@ -629,7 +655,7 @@ static void ValidateMethod(Symbol callClass, Symbol methodName, Expressions argu
             // Add all expressions' types into a queue
             std::queue<Symbol> args;
             for(int i = arguments->first(); arguments->more(i); i = arguments->next(i)) {
-                Expression cur = actual->nth(i);
+                Expression cur = arguments->nth(i);
                 Symbol ty = cur->Validate();
                 args.push(ty);
             }
@@ -640,7 +666,7 @@ static void ValidateMethod(Symbol callClass, Symbol methodName, Expressions argu
                     serr() << "Not enough arguments supplied for method declaration.\n";
                     break;
                 }
-                Symbol ty = ff->nth(i)->Validate();
+                Symbol ty = ff->nth(i)->GetType();
                 if(ty != args.front()) {
                     serr() << "Type mismatch for agument " << i << ". Expected " << ty << " but found " << args.front() << '\n';
                 }
@@ -649,6 +675,7 @@ static void ValidateMethod(Symbol callClass, Symbol methodName, Expressions argu
             if(args.size()) {
                 serr() << "Too many arguments supplied for method declaration.\n";
             }
+            return ftype;
         } else {
             serr() << "Attribute " << f->GetID() << " is not a method.\n";
         }
@@ -656,97 +683,175 @@ static void ValidateMethod(Symbol callClass, Symbol methodName, Expressions argu
     else {
         // WAIT
         // Check inheritance list for overrides n shit
-        // No. That is not this methods problem
+        // No. That is not this functions problem
         serr() << "No method " << methodName << " found in class " << callClass << '\n';
     }
+    return No_type;
+}
+
+static Symbol GetLowestCommonType(Symbol t1, Symbol t2)
+{
+    if(!inheritanceGraph.count(t1) || !inheritanceGraph.count(t2)) {
+        LOGIT("No common ancestors " << t1 << ", " << t2 << '\n');
+        return Object;
+    }
+    if(t1 == t2) {
+        return t1;
+    }
+    std::set<Symbol> types;
+    Symbol seeker = t1;
+    while(inheritanceGraph.count(seeker)) {
+        if(inheritanceGraph.count(seeker)) {
+            Symbol the = inheritanceGraph.at(seeker);
+            types.insert(the);
+            seeker = the;
+        } else {
+            break;
+        }
+    }
+    seeker = t2;
+    while(inheritanceGraph.count(seeker)) {
+        Symbol the = inheritanceGraph.at(seeker);
+        if(types.count(the)) {
+            return the;
+        }
+        seeker = the;
+    }
+    return Object;
+}
+
+static Symbol GetSubclassWithAttribute(Symbol currentClass, Symbol att)
+{
+    if(!mClassFeatures.at(currentClass).count(att)) {
+        Symbol ty = Object;
+        Symbol seeker = currentClass;
+        while(inheritanceGraph.count(seeker)) {
+            if(mClassFeatures.at(seeker).count(att)) {
+                Feature f = mClassFeatures.at(seeker).at(att);
+                if(f->IsMethod()) {
+                    ty = seeker;
+                    break;
+                }
+            }
+            if(inheritanceGraph.count(seeker)) {
+                seeker = inheritanceGraph.at(seeker);
+            } else {
+                break;
+            }
+        }
+        return ty;
+    }
+    return currentClass;
+}
+
+static bool TypeInheritsFrom(Symbol ty, Symbol from)
+{
+    Symbol seeker = ty;
+    while(inheritanceGraph.count(seeker)) {
+        if(seeker == from) {
+            return true;
+        }
+        seeker = inheritanceGraph.at(seeker);
+    }
+    return false;
 }
 
 Symbol dispatch_class::Validate() const {
+    LOGIT("Dispatch expression\n");
     Symbol t1 = expr->Validate();
-    Symbol t3 = actual->Validate();
+    // Symbol t3 = actual->Validate();
     // what if t1 validation fails and returns type Object?
     if(t1 == No_type)
-        t1 = SELF_TYPE;
-    if(mClassFeatures.at(t1).count(name)) {
-        Feature f = mClassFeatures.at(t1).at(name);
-        // Make sure the attribute is actually a method
-        if(!f->IsMethod()) {
-            // Type check the method
-            Symbol ftype = f->GetType();
-            if(ftype != t1) {
-                serr() << "Expected " << t1 << " but found " << ftype << '\n';
-            }
-            method_class* me = static_cast<method_class*>(f);
-
-            // Make sure the arguments all match types and quantity
-            // Use a queue to build up the types in the parameters supplied
-            std::queue<Symbol> args;
-            for(int i = actual->first(); actual->more(i); i = actual->next(i)) {
-                Expression cur = actual->nth(i);
-                Symbol etype = cur->Validate();
-                args.push(etype);
-            }
-            // Get and check the method being called
-            Formals ff = me->GetFormals();
-            
-            // peek the && args.size() loop conditional
-            // this might cause problems
-            // like if no args are supplied and no error message is sent bc the loop is never entered
-            for(int i = ff->first(); ff->more(i); i = ff->next(i)) {
-                Symbol ty = ff->nth(i)->Validate();
-                if(args.empty()) {
-                    serr() << "Not enough arguments supplied for method declaration.\n";
-                    break;
-                }
-                if(ty != args.front()) {
-                    serr() << "Type mismatch. Expected " << ty << " but found " << args.front() << '\n';
-                }
-                args.pop();
-                // Check for too little args
-            }
-            // Check for too many args
-            if(args.size()) {
-                serr() << "Too many arguments supplied for method declaration.\n";
-            }
-        } else {
-            serr() << "Attribute " << f->GetID() << " is not a method.\n";
-        }
-    } else {
-        serr() << "No method found: " << name << " in " << t1 << '\n';
-    }
-    return t3;
+        t1 = scopes.CurrentClass();
+    // Now check if the function is an override or not
+    Symbol cc = GetSubclassWithAttribute(t1, name);
+    Symbol rt = ValidateMethod(t1, name, actual);
+    return rt;
 }
 
 Symbol static_dispatch_class::Validate() const {
+    LOGIT("Static dispatch expression\n");
     Symbol t1 = expr->Validate();
-    Symbol t3 = actual->Validate();
-    if(!usertypes.count(type_name)) {
-        serr() << "No type found: " << type_name << '\n';
+    if(TypeInheritsFrom(t1, type_name)) {
+        Symbol rt = ValidateMethod(type_name, name, actual);
+        return ValidateMethod(type_name, name, actual);
     }
-    // t1 will always have a type at this point
-
-    // This shares so much with standard dispatch, find a common point and make a function for it
-    if(mClassFeatures.at(t1).count(name)) {
-        Symbol ftype = mClassFeatures.at(t1).at(name)->GetType();
-        if(ftype != t1) {
-            serr() << "Expected " << t1 << " but found " << ftype << '\n';
-        }
-    } else {
-        serr() << "No method: " << name << " in class type " << type_name << '\n';
-    }
-    return t3;
+    serr() << "Type redefinition " << type_name << " must be a superclass of " << t1 << '\n';
+    return No_type;
 }
 
 Symbol cond_class::Validate() const {
+    LOGIT("Conditional expression\n");
     Symbol pt = pred->Validate();
     if(pt != Bool) {
         ETypeMismatch(Bool, pt);
     }
     // the type is the lowest common ancestor
     // do this shit
-    
+    Symbol thenType = then_exp->Validate();
+    Symbol elseType = else_exp->Validate();
+    Symbol common = GetLowestCommonType(thenType, elseType);
+    return common;
+}
+
+Symbol loop_class::Validate() const {
+    LOGIT("Loop expression\n");
+    Symbol pt = pred->Validate();
+    if(pt != Bool) {
+        serr() << "Loop predicate must be a boolean expression, but is " << pt << '\n';
+    }
     return Object;
 }
+
+Symbol block_class::Validate() const {
+    LOGIT("Block expression\n");
+    Symbol rt = No_type;
+    for(int i = body->first(); body->more(i); i = body->next(i)) {
+        rt = body->nth(i)->Validate();
+    }
+    return rt;
+}
+
+Symbol let_class::Validate() const {
+    // oh boy
+    // variables declared here are then visible in the scope of the body
+    LOGIT("Let expression.\n");
+    scopes.Enter();
+    scopes.Add(identifier, type_decl);
+    Symbol it = init->Validate();
+    if(it != No_type) {
+        if(!TypeInheritsFrom(type_decl, it)) {
+            serr() << "Initializer expects " << type_decl << " but found " << it << '\n';
+        }
+    }
+    Symbol rt = body->Validate();
+    scopes.Exit();
+    return rt;
+}
+
+Symbol typcase_class::Validate() const {
+    LOGIT("Type case\n");
+    Symbol maintype = expr->Validate();
+    Symbol rt = No_type;
+    for(int i = cases->first(); cases->more(i); i = cases->next(i)) {
+        scopes.Enter();
+        branch_class* b = static_cast<branch_class*>(cases->nth(i));
+        bool valid = TypeInheritsFrom(b->GetType(), maintype);
+        if(!valid) { 
+            serr() << "Type redefinition " << b->GetType() << " must be a superclass of " << maintype << '\n';
+        }
+        Symbol ty = b->GetExpression()->Validate();
+        if(i) {
+            rt = GetLowestCommonType(rt, ty);
+        } else {
+            rt = ty;
+        }
+        scopes.Exit();
+    }
+    return rt;
+}
+
+Symbol formal_class::GetType() const { return type_decl; }
 
 // Used for marking empty expressions
 Symbol Expression_class::Validate() const { return No_type; }

@@ -18,7 +18,7 @@
 #define FALSE 0
 
 // cout wrapper incase this fucks with grading later
-#define CLASSTABLE_LOGIT
+// #define CLASSTABLE_LOGIT
 #ifdef CLASSTABLE_LOGIT
   #define LOGIT(s) std::cout << s
 #else
@@ -52,7 +52,11 @@ class ScopeContainer {
 protected:
   std::map<Symbol, std::stack<Symbol> > vars;
   std::stack<Scope> scopes;
+  Symbol currentClass;
 public:
+  void EnterClass(Symbol name);
+  Symbol CurrentClass();
+  void ExitClass();
   // Enter a new scope
   void Enter(std::string name = "");
   // Exit current scope

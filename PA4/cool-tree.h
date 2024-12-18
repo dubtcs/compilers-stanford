@@ -68,6 +68,7 @@ public:
    tree_node *copy()		 { return copy_Formal(); }
    virtual Formal copy_Formal() = 0;
 
+   virtual Symbol GetType() const = 0;
 #ifdef Formal_EXTRAS
    Formal_EXTRAS
 #endif
@@ -254,6 +255,7 @@ public:
    Formal copy_Formal();
    void dump(ostream& stream, int n);
 
+   virtual Symbol GetType() const;
 #ifdef Formal_SHARED_EXTRAS
    Formal_SHARED_EXTRAS
 #endif
@@ -278,6 +280,9 @@ public:
    Case copy_Case();
    void dump(ostream& stream, int n);
 
+   Symbol GetType() const { return type_decl; }
+   Symbol GetName() const { return name; }
+   Expression GetExpression() const { return expr; }
 #ifdef Case_SHARED_EXTRAS
    Case_SHARED_EXTRAS
 #endif
@@ -400,6 +405,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -422,6 +428,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
@@ -442,6 +449,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
 
+   virtual Symbol Validate() const;
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
