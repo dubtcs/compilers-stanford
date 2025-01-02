@@ -26,6 +26,8 @@
 #include "cgen_gc.h"
 
 #include <sstream>
+#include <vector>
+#include <map>
 
 extern void emit_string_constant(ostream& str, char *s);
 extern int cgen_debug;
@@ -838,13 +840,17 @@ void CgenClassTable::code()
 //                   - dispatch tables
 //
 
-  if(cgen_debug)
-    std::cout << "creating prototypes\n";
+  DBG("creating prototypes\n");
   code_protos();
 
-  if(cgen_debug) 
-    std::cout << "creating class nametable\n";
+  DBG("creating class nametable\n");
   code_nametable();
+
+  DBG("creating dispatch tables.\n");
+  code_dispatches();
+
+  DBG("creating class inits.\n");
+  code_inits();
 
 // ...
 
@@ -878,6 +884,7 @@ CgenNode::CgenNode(Class_ nd, Basicness bstatus, CgenClassTableP ct) :
    basic_status(bstatus)
 { 
    stringtable.add_string(name->get_string());          // Add class name to string table
+   build_inheritance_bs();
 }
 
 
@@ -972,6 +979,33 @@ void no_expr_class::code(ostream &s) {
 void object_class::code(ostream &s) {
 }
 
+void CgenNode::build_inheritance_bs() {
+  CgenNode* seeker = this;
+  while(seeker && (seeker->name != No_class)) {
+    // s << "# Inheriting from " << seeker->name->get_string() << '\n';
+    Features fe = seeker->features;
+    for(int i = fe->first(); fe->more(i); i = fe->next(i)) {
+      Feature f = fe->nth(i);
+      if(f->IsMethod()) {
+        method_class* m = static_cast<method_class*>(f);
+        // is not defined
+        // there could be a lower definition that shouldn't take its place
+        if(!methodPositions.count(m->name)) {
+          methodPositions[m->name] = methods.size();
+          methods.push_back(std::make_pair(seeker->name->get_string(), m->name->get_string()));
+          // methods.push_back(m);
+        }
+      }
+      else {
+        attr_class* a = static_cast<attr_class*>(f);
+        attributePositions[a->name] = attributes.size();
+        attributes.push_back(a);
+      }
+    }
+    seeker = seeker->get_parentnd();
+  }
+}
+
 void CgenNode::code_proto(std::ostream& s) {
   // Garbage tag
   // Class tag
@@ -987,42 +1021,60 @@ void CgenNode::code_proto(std::ostream& s) {
   stringtable.lookup_string(name->get_string())->code_ref(s);
   s << " # Class tag\n";
 
-  // This is gonna loop over the features and count them while also storing their
-  // assembly in a separate stream to combine them at the end
-  int objSize = DEFAULT_OBJFIELDS;
-  std::stringstream ts; // temporary stream
-  for(int i = features->first(); features->more(i); i = features->next(i)) {
-    Feature f = features->nth(i);
-    if(!f->IsMethod()) {
-      attr_class* at = static_cast<attr_class*>(f);
-      objSize++;
-      // Object initializers are on page 10 of Cool manual
-      // Basically; it's all 0, with String being TWO zeroes
-      if(at->type_decl == Int) {
-        ts << WORD << 0 << '\n';
-      }
-      else if(at->type_decl == Bool) {
-        ts << WORD << 0 << '\n'; // 1 true, 0 false
-      }
-      else if(at->type_decl == Str) {
-        ts << WORD;
-        // word1 : length
-        // word2 : char array, ending with 0
-        stringtable.lookup_string("")->code_ref(ts);
-        ts << '\n';
-      }
-      else { // void init
-        ts << WORD << 0 << '\n';
-      }
-    }
-  }
+  // Object size
+  s << WORD << attributes.size() + DEFAULT_OBJFIELDS << " # Object size\n";
 
-  // Size tag
-  s << WORD << objSize << " # Object size\n";
   // Dispatch table
   s << WORD << 1111 << " # Dispatch pointer\n";
 
-  s << ts.str(); // merge streams
+  // reverse through attributes as the vector is most recent inherited at front
+  for(int i = attributes.size() - 1; i >= 0; i--) {
+    attr_class* a = attributes[i];
+    if(a->type_decl == Str) {
+      s << WORD;
+      stringtable.lookup_string(a->name->get_string())->code_ref(s);
+      s << '\n';
+    }
+    else {
+      // Int, Bool, and Void are all just 0
+      s << WORD << 0 << '\n';
+    }
+  }
+
+}
+
+void CgenNode::code_dispatch(std::ostream& s) {
+  s << name->get_string() << DISPTAB_SUFFIX << LABEL;
+  for(int i = 0; i < methods.size(); i++) {
+    std::pair<char*, char*> m = methods[i];
+    s << WORD << m.first << METHOD_SEP << m.second << '\n';
+  }
+  // s << name->get_string() << DISPTAB_SUFFIX << LABEL;
+  // // need to go through and find all available methods
+  // CgenNode* seeker = this;
+  // std::vector<method_class*> methods;
+  // std::map<Symbol, int> methodOffsets;
+  // while(seeker && (seeker->name != No_class)) {
+  //   // s << "# Inheriting from " << seeker->name->get_string() << '\n';
+  //   Features fe = seeker->features;
+  //   for(int i = fe->first(); fe->more(i); i = fe->next(i)) {
+  //     Feature f = fe->nth(i);
+  //     if(f->IsMethod()) {
+  //       method_class* m = static_cast<method_class*>(f);
+  //       // is not defined
+  //       if(!methodOffsets.count(m->name)) {
+  //         // methodOffsets[m->name] = methods.size();
+  //         // methods.push_back(m);
+  //         s << WORD << seeker->name->get_string() << METHOD_SEP << m->name->get_string() << '\n';
+  //       }
+  //     }
+  //   }
+  //   seeker = seeker->get_parentnd();
+  // }
+}
+
+void CgenNode::code_init(std::ostream& s) {
+
 }
 
 void CgenClassTable::code_nametable() {
@@ -1043,6 +1095,24 @@ void CgenClassTable::code_protos() {
   while(seeker) {
     CgenNode* ptr = seeker->hd();
     ptr->code_proto(str);
+    seeker = seeker->tl();
+  }
+}
+
+void CgenClassTable::code_dispatches() {
+  List<CgenNode>* seeker = nds;
+  while(seeker) {
+    CgenNode* ptr = seeker->hd();
+    ptr->code_dispatch(str);
+    seeker = seeker->tl();
+  }
+}
+
+void CgenClassTable::code_inits() {
+  List<CgenNode>* seeker = nds;
+  while(seeker) {
+    CgenNode* ptr = seeker->hd();
+    ptr->code_init(str);
     seeker = seeker->tl();
   }
 }

@@ -4,6 +4,10 @@
 #include "cool-tree.h"
 #include "symtab.h"
 
+#include <string>
+#include <vector>
+#include <map>
+
 enum Basicness     {Basic, NotBasic};
 #define TRUE 1
 #define FALSE 0
@@ -35,6 +39,8 @@ private:
 // My code pdoructions
    void code_nametable();
    void code_protos();
+   void code_dispatches();
+   void code_inits();
 
 // The following creates an inheritance graph from
 // a list of classes.  The graph is implemented as
@@ -80,7 +86,15 @@ public:
 public:
    // Seems the other classes have their own code_X methods for assembly streams
    // So ig we doing that
+   void build_inheritance_bs();
    void code_proto(std::ostream& s);
+   void code_dispatch(std::ostream& s);
+   void code_init(std::ostream& s);
+
+   std::vector<attr_class*> attributes;
+   std::map<Symbol, int> attributePositions;
+   std::vector<std::pair<char*, char*> > methods;
+   std::map<Symbol, int> methodPositions;
 };
 
 class BoolConst 

@@ -72,6 +72,8 @@
 // Write a prototype label
 #define PROTO(nam) GARBAGE << nam << "_protObj:\n"
 
+#define DBG(msg) if(cgen_debug) std::cout << msg
+
 //
 // register names
 //
